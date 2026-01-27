@@ -3,62 +3,62 @@
 ## 1.0.4.8 - 2026-01-27
 - Accept Fribb anime-lists `tvdb_id` field (with legacy `thetvdb_id` fallback) so TVDB mappings load again and .plexmatch lookups resolve.
 
-## 1.0.3.0 - 2025-12-21
-- Append an AMS rating label to the displayed rating line.
+## 1.0.4.7 - 2025-12-30
+- Rebuild with the True Beauty manual mapping included and assembly/file versions at 1.0.4.7.
 
-## 1.0.3.1 - 2025-12-22
-- Aggregate AniDB tags across all mapped TV seasons for the series.
-- Populate season tags from AniDB per season mapping (no genre fallback).
+## 1.0.4.6 - 2025-12-30
+- Add a manual mapping override for "True Beauty (2024)" (AniList 152184 / MAL 57192) to cover missing TVDB/IMDb in Fribb.
 
-## 1.0.3.2 - 2025-12-22
-- Allow ONA titles to use Jikan data (fixes missing rating/title for Japan Sinks: 2020).
+## 1.0.4.5 - 2025-12-29
+- Rebuild with corrected manifest checksum so Jellyfin auto-update installs cleanly.
 
-## 1.0.3.3 - 2025-12-22
-- Keep season-specific mappings when AniList root differs (prevents ID swaps on sequels like Treasure Chest of Courage).
+## 1.0.4.4 - 2025-12-28
+- Walk backwards through AniList PREQUEL relations (using year proximity and duration heuristics, with long-episode exceptions) to pick the correct starting AniList ID when Fribb maps to a later sequel (fixes Initial D being labeled as "Fourth Stage").
 
-## 1.0.3.4 - 2025-12-22
-- Add mapping overrides for Dragon Ball entries and Ranking of Kings: Treasure Chest of Courage to prevent ID swaps.
+## 1.0.4.3 - 2025-12-28
+- When mapping points to a sequel/spin-off, prefer the root AniList media for titles/overview only if it’s not on the override list and its year is closer to the .plexmatch year (keeps Ranking of Kings/Dragon Ball overrides and year-sensitive matches like FM Ghost intact).
 
-## 1.0.3.5 - 2025-12-22
-- When a title is in the override list, skip AniList root realignment entirely (keeps per-show IDs/names for overrides like Dragon Ball Daima).
+## 1.0.4.2 - 2025-12-27
+- Force-refresh AniList season details (relations + duration) when a sequel link is missing, and refresh non-TV nodes during traversal to ensure movie hops lead to the next TV season. This should resolve KonoSuba S3 IDs without manual intervention.
 
-## 1.0.3.6 - 2025-12-22
-- Defer all Dragon Ball seasons to TVDB/other providers to avoid broken AniList chains and incorrect season names.
-
-## 1.0.3.7 - 2025-12-27
-- Version bump to publish the latest fixes.
-
-## 1.0.3.8 - 2025-12-27
-- Follow AniList sequel chains through movies/OVAs to find the next TV season, preventing season-name fallback when a film sits between seasons (e.g., KonoSuba S3).
-- Keep numbered season titles even if AniList has no season detail, avoiding TVDB names when using “Season {number}”.
-
-## 1.0.3.9 - 2025-12-27
-- Treat AniList entries with duration <= 60 minutes (or known long-episode exceptions like Initial D Third Stage) as season candidates when walking sequel chains, so season provider keeps AniList/MAL IDs even when a movie sits between TV seasons.
+## 1.0.4.1 - 2025-12-27
+- Include AniList duration on relation nodes to strengthen movie-to-season traversal and keep AniList/MAL IDs on downstream seasons (e.g., KonoSuba S3).
 
 ## 1.0.4.0 - 2025-12-27
 - Refine AniList relation traversal: score sequel/side-story/alternative links and formats (TV/TV_SHORT/ONA/OVA/MOVIE) and walk through movies using duration heuristics to reach the next TV season, keeping AniList/MAL IDs instead of falling back.
 - Ensure season traversal build matches release version to avoid mixed-version loads.
 
-## 1.0.4.1 - 2025-12-27
-- Include AniList duration on relation nodes to strengthen movie-to-season traversal and keep AniList/MAL IDs on downstream seasons (e.g., KonoSuba S3).
+## 1.0.3.9 - 2025-12-27
+- Treat AniList entries with duration <= 60 minutes (or known long-episode exceptions like Initial D Third Stage) as season candidates when walking sequel chains, so season provider keeps AniList/MAL IDs even when a movie sits between TV seasons.
 
-## 1.0.4.2 - 2025-12-27
-- Force-refresh AniList season details (relations + duration) when a sequel link is missing, and refresh non-TV nodes during traversal to ensure movie hops lead to the next TV season. This should resolve KonoSuba S3 IDs without manual intervention.
+## 1.0.3.8 - 2025-12-27
+- Follow AniList sequel chains through movies/OVAs to find the next TV season, preventing season-name fallback when a film sits between seasons (e.g., KonoSuba S3).
+- Keep numbered season titles even if AniList has no season detail, avoiding TVDB names when using "Season {number}".
 
-## 1.0.4.3 - 2025-12-28
-- When mapping points to a sequel/spin-off, prefer the root AniList media for titles/overview only if it’s not on the override list and its year is closer to the .plexmatch year (keeps Ranking of Kings/Dragon Ball overrides and year-sensitive matches like FM Ghost intact).
+## 1.0.3.7 - 2025-12-27
+- Version bump to publish the latest fixes.
 
-## 1.0.4.4 - 2025-12-28
-- Walk backwards through AniList PREQUEL relations (using year proximity and duration heuristics, with long-episode exceptions) to pick the correct starting AniList ID when Fribb maps to a later sequel (fixes Initial D being labeled as “Fourth Stage”).
+## 1.0.3.6 - 2025-12-22
+- Defer all Dragon Ball seasons to TVDB/other providers to avoid broken AniList chains and incorrect season names.
 
-## 1.0.4.5 - 2025-12-29
-- Rebuild with corrected manifest checksum so Jellyfin auto-update installs cleanly.
+## 1.0.3.5 - 2025-12-22
+- When a title is in the override list, skip AniList root realignment entirely (keeps per-show IDs/names for overrides like Dragon Ball Daima).
 
-## 1.0.4.6 - 2025-12-30
-- Add a manual mapping override for “True Beauty (2024)” (AniList 152184 / MAL 57192) to cover missing TVDB/IMDb in Fribb.
+## 1.0.3.4 - 2025-12-22
+- Add mapping overrides for Dragon Ball entries and Ranking of Kings: Treasure Chest of Courage to prevent ID swaps.
 
-## 1.0.4.7 - 2025-12-30
-- Rebuild with the True Beauty manual mapping included and assembly/file versions at 1.0.4.7.
+## 1.0.3.3 - 2025-12-22
+- Keep season-specific mappings when AniList root differs (prevents ID swaps on sequels like Treasure Chest of Courage).
+
+## 1.0.3.2 - 2025-12-22
+- Allow ONA titles to use Jikan data (fixes missing rating/title for Japan Sinks: 2020).
+
+## 1.0.3.1 - 2025-12-22
+- Aggregate AniDB tags across all mapped TV seasons for the series.
+- Populate season tags from AniDB per season mapping (no genre fallback).
+
+## 1.0.3.0 - 2025-12-21
+- Append an AMS rating label to the displayed rating line.
 
 ## 1.0.2.2 - 2025-12-21
 - Skip processing when .plexmatch is missing; log a clear banner and exit.
