@@ -97,7 +97,7 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
             // Fribb missing TVDB/IMDb: True Beauty (2024)
             new AnimeMapping
             {
-                thetvdb_id = 442363,
+                tvdb_id = 442363,
                 imdb_id = "tt33054444",
                 anilist_id = 152184,
                 mal_id = 57192,
@@ -163,7 +163,7 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
             AnimeMapping? mapping = null;
             if (!string.IsNullOrEmpty(plexMatchData.TvdbId))
             {
-                mapping = _manualMappings.FirstOrDefault(m => m.thetvdb_id.HasValue && m.thetvdb_id.Value.ToString() == plexMatchData.TvdbId)
+                mapping = _manualMappings.FirstOrDefault(m => m.TvdbId.HasValue && m.TvdbId.Value.ToString() == plexMatchData.TvdbId)
                     ?? _animeListMapper.GetMappingByTvdbId(plexMatchData.TvdbId);
             }
 
@@ -207,8 +207,8 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
                         aniListData = await _apiService.GetAniListAnimeAsync(prequelRoot.Value);
 
                         var prequelMapping = _animeListMapper.GetMappingByAniListId(prequelRoot.Value);
-                        if (prequelMapping != null && prequelMapping.thetvdb_id.HasValue && mapping.thetvdb_id.HasValue &&
-                            prequelMapping.thetvdb_id.Value == mapping.thetvdb_id.Value)
+                        if (prequelMapping != null && prequelMapping.TvdbId.HasValue && mapping.TvdbId.HasValue &&
+                            prequelMapping.TvdbId.Value == mapping.TvdbId.Value)
                         {
                             mapping = prequelMapping;
                         }
@@ -265,8 +265,8 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
                     if (rootAniListId.HasValue && rootAniListId != mapping.anilist_id)
                     {
                         var rootMapping = _animeListMapper.GetMappingByAniListId(rootAniListId.Value);
-                        if (rootMapping != null && rootMapping.thetvdb_id.HasValue && mapping.thetvdb_id.HasValue &&
-                            rootMapping.thetvdb_id.Value == mapping.thetvdb_id.Value)
+                        if (rootMapping != null && rootMapping.TvdbId.HasValue && mapping.TvdbId.HasValue &&
+                            rootMapping.TvdbId.Value == mapping.TvdbId.Value)
                         {
                             _logger.LogInformation("Swapped mapping to AniList {ChosenId} for series '{Title}' to correct provider IDs", rootAniListId, plexMatchData.Title);
                             mapping = rootMapping;

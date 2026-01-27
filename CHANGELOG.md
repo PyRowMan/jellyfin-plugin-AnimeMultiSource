@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.4.8 - 2026-01-27
+- Accept Fribb anime-lists `tvdb_id` field (with legacy `thetvdb_id` fallback) so TVDB mappings load again and .plexmatch lookups resolve.
+
 ## 1.0.3.0 - 2025-12-21
 - Append an AMS rating label to the displayed rating line.
 

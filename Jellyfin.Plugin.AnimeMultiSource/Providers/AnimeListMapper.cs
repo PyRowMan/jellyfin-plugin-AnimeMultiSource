@@ -46,8 +46,8 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
 
                 // Handle duplicates by taking the first occurrence
                 _mappingsByTvdb = mappings?
-                    .Where(x => x.thetvdb_id.HasValue)
-                    .GroupBy(x => x.thetvdb_id.GetValueOrDefault().ToString())
+                    .Where(x => x.TvdbId.HasValue)
+                    .GroupBy(x => x.TvdbId!.Value.ToString(CultureInfo.InvariantCulture))
                     .ToDictionary(g => g.Key, g => SelectPreferredMapping(g)) // Prefer TV over OVA/OVA specials for duplicates
                     ?? new Dictionary<string, AnimeMapping>();
 
@@ -122,9 +122,17 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
 
     public class AnimeMapping
     {
-        // Change ALL numeric ID properties to long?
+        // Support both legacy "thetvdb_id" and current "tvdb_id" keys.
+        [JsonPropertyName("tvdb_id")]
+        [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+        public long? tvdb_id { get; set; }
+
+        [JsonPropertyName("thetvdb_id")]
         [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
         public long? thetvdb_id { get; set; }
+
+        [JsonIgnore]
+        public long? TvdbId => tvdb_id ?? thetvdb_id;
 
         public string? imdb_id { get; set; }
 
