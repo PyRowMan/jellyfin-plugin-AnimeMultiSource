@@ -121,6 +121,22 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
             return translation?.Data;
         }
 
+        public async Task<TvdbTranslation?> GetSeriesTranslationAsync(int seriesId, string language, CancellationToken cancellationToken)
+        {
+            var url = $"{BaseUrl}/series/{seriesId}/translations/{language}";
+            var response = await SendAuthorizedAsync(url, cancellationToken);
+            if (response == null || !response.IsSuccessStatusCode)
+            {
+                _logger.LogDebug("TVDB translation request failed for series {SeriesId} lang {Language} (status: {Status})",
+                    seriesId, language, response?.StatusCode);
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var translation = JsonSerializer.Deserialize<TvdbTranslationResponse>(json, _jsonOptions);
+            return translation?.Data;
+        }
+
         public async Task<TvdbEpisode?> GetEpisodeByIdAsync(int episodeId, CancellationToken cancellationToken)
         {
             var url = $"{BaseUrl}/episodes/{episodeId}";

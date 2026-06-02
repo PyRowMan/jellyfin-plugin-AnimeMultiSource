@@ -64,6 +64,7 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
         private readonly PlexMatchParser _plexMatchParser;
         private readonly AnimeListMapper _animeListMapper;
         private readonly ApiService _apiService;
+        private readonly TvdbApiClient _tvdbApiClient;
         private readonly TagFilterService _tagFilterService;
         private static readonly HashSet<long> _keepAniListMappingIds = new()
         {
@@ -126,6 +127,7 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
             var httpClient = new System.Net.Http.HttpClient(httpClientHandler);
             _animeListMapper = new AnimeListMapper(httpClient, logger);
             _apiService = new ApiService(httpClient, logger);
+            _tvdbApiClient = new TvdbApiClient(httpClient, logger, Constants.TvdbProjectApiKey);
         }
 
         private static int _serviceCallCount = 0;
@@ -304,7 +306,28 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
             _logger.LogInformation("=== SERVICE COMPLETED CALL #{CallId} ===", callId);
 
             // Create combined metadata
-            return await CreateCombinedMetadata(plexMatchData, mapping, jikanData, aniListData, rootAniListId, effectiveMalId, config, info.MetadataLanguage);
+            AniDbAnime? aniDbData = null;
+            if (mapping.anidb_id.HasValue && (config.TitleDataSource == Configuration.DataSourceType.AniDB || config.EnableAniDbTags || info.MetadataLanguage == "fr"))
+            {
+                aniDbData = await _apiService.GetFullAniDbAnimeAsync(mapping.anidb_id.Value, config.AniDbClientName, config.AniDbClientVersion, config.AniDbRateLimit);
+            }
+
+            TvdbSeriesExtended? tvdbData = null;
+            if (mapping.TvdbId.HasValue && (info.MetadataLanguage == "fr" || config.SeasonOverviewSource == Configuration.SeasonOverviewSourceType.Tvdb))
+            {
+                tvdbData = await _tvdbApiClient.GetSeriesExtendedAsync((int)mapping.TvdbId.Value, CancellationToken.None);
+                if (info.MetadataLanguage == "fr" && tvdbData != null)
+                {
+                    var translation = await _tvdbApiClient.GetSeriesTranslationAsync((int)mapping.TvdbId.Value, "fra", CancellationToken.None);
+                    if (translation != null)
+                    {
+                        tvdbData.Name = translation.Name ?? tvdbData.Name;
+                        tvdbData.Overview = translation.Overview ?? tvdbData.Overview;
+                    }
+                }
+            }
+
+            return await CreateCombinedMetadata(plexMatchData, mapping, jikanData, aniListData, aniDbData, tvdbData, rootAniListId, effectiveMalId, config, info.MetadataLanguage);
         }
 
         private async Task<AnimeMetadata> CreateCombinedMetadata(
@@ -312,6 +335,8 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
             AnimeMapping mapping,
             JikanAnime? jikanData,
             AniListMedia? aniListData,
+            AniDbAnime? aniDbData,
+            TvdbSeriesExtended? tvdbData,
             long? rootAniListId,
             long? effectiveMalId,
             Configuration.PluginConfiguration config,
@@ -375,7 +400,7 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
             }
 
             // Apply configuration for Title and OriginalTitle selection
-            metadata.Title = GetConfiguredTitle(primaryJikan, aniListPrimary, config, metadataLanguage);
+            metadata.Title = GetConfiguredTitle(primaryJikan, aniListPrimary, aniDbData, tvdbData, config, metadataLanguage);
             metadata.OriginalTitle = GetConfiguredOriginalTitle(primaryJikan, aniListPrimary, config);
 
             // Status from Jikan
@@ -384,8 +409,8 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
             // Community Rating - convert AniList score (0-100) to 0-10 scale
             metadata.CommunityRating = primaryJikan?.Score ?? (aniListPrimary?.AverageScore / 10.0);
 
-            // Overview - prefer Jikan, fallback to AniList
-            metadata.Overview = primaryJikan?.Synopsis ?? aniListPrimary?.Description;
+            // Overview - prefer TVDB if French or configured, then Jikan, fallback to AniList
+            metadata.Overview = GetConfiguredOverview(primaryJikan, aniListPrimary, tvdbData, config, metadataLanguage);
 
             // Dates from Jikan
             metadata.ReleaseDate = primaryJikan?.Aired?.From;
@@ -577,10 +602,11 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
             {
                 "en" => Configuration.TitleFieldType.TitleEnglish,
                 "ja" => Configuration.TitleFieldType.TitleJapanese,
+                "fr" => Configuration.TitleFieldType.TitleFrench,
                 _ => Configuration.TitleFieldType.Title
             };
 
-        private string GetConfiguredTitle(JikanAnime? jikanData, AniListMedia? aniListData, Configuration.PluginConfiguration config, string? metadataLanguage)
+        private string GetConfiguredTitle(JikanAnime? jikanData, AniListMedia? aniListData, AniDbAnime? aniDbData, TvdbSeriesExtended? tvdbData, Configuration.PluginConfiguration config, string? metadataLanguage)
         {
             var languageField = TitleFieldFromLanguage(metadataLanguage);
 
@@ -588,14 +614,34 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
             // 2. Try same configured field from any source.
             // 3. Try library language field from any source.
             // 4. Last resort: any title.
-            return GetTitleFromSource(jikanData, aniListData, config.TitleField, config.TitleDataSource)
+            return GetTitleFromSource(jikanData, aniListData, aniDbData, tvdbData, config.TitleField, config.TitleDataSource, metadataLanguage)
+                ?? GetTitleFromAniDb(aniDbData, config.TitleField)
+                ?? GetTitleFromTvdb(tvdbData, config.TitleField, metadataLanguage)
                 ?? GetTitleFromJikan(jikanData, config.TitleField)
                 ?? GetTitleFromAniList(aniListData, config.TitleField)
+                ?? GetTitleFromAniDb(aniDbData, languageField)
+                ?? GetTitleFromTvdb(tvdbData, languageField, metadataLanguage)
                 ?? GetTitleFromJikan(jikanData, languageField)
                 ?? GetTitleFromAniList(aniListData, languageField)
                 ?? jikanData?.Title
                 ?? aniListData?.Title?.Romaji
                 ?? "Unknown Title";
+        }
+
+        private string? GetConfiguredOverview(JikanAnime? jikanData, AniListMedia? aniListData, TvdbSeriesExtended? tvdbData, Configuration.PluginConfiguration config, string? metadataLanguage)
+        {
+            // If language is French, try TVDB first if available
+            if (metadataLanguage == "fr" && tvdbData != null)
+            {
+                if (!string.IsNullOrEmpty(tvdbData.Overview)) return tvdbData.Overview;
+            }
+
+            if (config.SeasonOverviewSource == Configuration.SeasonOverviewSourceType.Tvdb && tvdbData != null)
+            {
+                if (!string.IsNullOrEmpty(tvdbData.Overview)) return tvdbData.Overview;
+            }
+
+            return jikanData?.Synopsis ?? aniListData?.Description;
         }
 
         private string GetConfiguredOriginalTitle(JikanAnime? jikanData, AniListMedia? aniListData, Configuration.PluginConfiguration config)
@@ -656,13 +702,14 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
                 .ToList();
         }
 
-        private string? GetTitleFromSource(JikanAnime? jikanData, AniListMedia? aniListData, Configuration.TitleFieldType field, Configuration.DataSourceType source)
+        private string? GetTitleFromSource(JikanAnime? jikanData, AniListMedia? aniListData, AniDbAnime? aniDbData, TvdbSeriesExtended? tvdbData, Configuration.TitleFieldType field, Configuration.DataSourceType source, string? metadataLanguage)
         {
             return source switch
             {
                 Configuration.DataSourceType.Anilist => GetTitleFromAniList(aniListData, field),
                 Configuration.DataSourceType.Jikan => GetTitleFromJikan(jikanData, field),
-                _ => GetTitleFromJikan(jikanData, field) ?? GetTitleFromAniList(aniListData, field)
+                Configuration.DataSourceType.AniDB => GetTitleFromAniDb(aniDbData, field),
+                _ => GetTitleFromJikan(jikanData, field) ?? GetTitleFromAniList(aniListData, field) ?? GetTitleFromAniDb(aniDbData, field) ?? GetTitleFromTvdb(tvdbData, field, metadataLanguage)
             };
         }
 
@@ -674,6 +721,45 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
                 Configuration.DataSourceType.Jikan => GetOriginalTitleFromJikan(jikanData, field),
                 _ => GetOriginalTitleFromJikan(jikanData, field) ?? GetOriginalTitleFromAniList(aniListData, field)
             };
+        }
+
+        private string? GetTitleFromAniDb(AniDbAnime? aniDbData, Configuration.TitleFieldType field)
+        {
+            if (aniDbData?.Titles?.TitleList == null) return null;
+
+            return field switch
+            {
+                Configuration.TitleFieldType.TitleFrench => aniDbData.Titles.TitleList
+                    .FirstOrDefault(t => string.Equals(t.Language, "fr", StringComparison.OrdinalIgnoreCase))?.Value,
+                Configuration.TitleFieldType.TitleEnglish => aniDbData.Titles.TitleList
+                    .FirstOrDefault(t => string.Equals(t.Language, "en", StringComparison.OrdinalIgnoreCase))?.Value,
+                Configuration.TitleFieldType.TitleJapanese => aniDbData.Titles.TitleList
+                    .FirstOrDefault(t => string.Equals(t.Language, "ja", StringComparison.OrdinalIgnoreCase))?.Value,
+                _ => aniDbData.Titles.TitleList
+                    .FirstOrDefault(t => string.Equals(t.Type, "main", StringComparison.OrdinalIgnoreCase))?.Value
+            };
+        }
+
+        private string? GetTitleFromTvdb(TvdbSeriesExtended? tvdbData, Configuration.TitleFieldType field, string? language)
+        {
+            if (tvdbData == null) return null;
+
+            // Map common language codes to TVDB 3-letter codes if necessary, 
+            // but TVDB v4 often uses 2-letter or 3-letter. 
+            // For now, let's try direct match and some common ones.
+            var targetLang = language?.ToLowerInvariant() switch
+            {
+                "fr" => "fra",
+                "en" => "eng",
+                "ja" => "jpn",
+                _ => language
+            };
+
+            // If we have translations in the extended data (not currently in model, but we added Name/Overview)
+            if (field == Configuration.TitleFieldType.TitleFrench && (language == "fr" || targetLang == "fra"))
+                return tvdbData.Name; 
+            
+            return null;
         }
 
         private string? GetTitleFromJikan(JikanAnime? jikanData, Configuration.TitleFieldType field)

@@ -6,7 +6,8 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Configuration
     {
         Title,
         TitleEnglish,
-        TitleJapanese
+        TitleJapanese,
+        TitleFrench
     }
 
     public enum OriginalTitleFieldType
@@ -40,7 +41,8 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Configuration
     {
         Anilist,
         Jikan,
-        PreferJikan
+        PreferJikan,
+        Tvdb
     }
 
     public class PluginConfiguration : BasePluginConfiguration

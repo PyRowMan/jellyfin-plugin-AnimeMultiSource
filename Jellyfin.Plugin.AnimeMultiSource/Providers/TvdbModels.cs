@@ -33,6 +33,7 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
         public int Id { get; set; }
         public string? Name { get; set; }
         public string? Slug { get; set; }
+        public string? Overview { get; set; }
     }
 
     public class TvdbEpisode
@@ -100,6 +101,8 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
     public class TvdbSeriesExtended
     {
         public int Id { get; set; }
+        public string? Name { get; set; }
+        public string? Overview { get; set; }
         public List<TvdbArtwork> Artworks { get; set; } = new();
         public List<TvdbSeason> Seasons { get; set; } = new();
     }

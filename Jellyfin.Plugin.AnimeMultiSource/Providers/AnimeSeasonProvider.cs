@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,6 +20,7 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
         private readonly ApiService _apiService;
         private readonly PlexMatchParser _plexMatchParser;
         private readonly AnimeListMapper _animeListMapper;
+        private readonly TvdbApiClient _tvdbClient;
         private readonly TagFilterService _tagFilterService;
         private PluginConfiguration _config;
 
@@ -36,6 +38,7 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
             _apiService = new ApiService(httpClient, logger);
             _plexMatchParser = new PlexMatchParser(logger);
             _animeListMapper = new AnimeListMapper(httpClient, logger);
+            _tvdbClient = new TvdbApiClient(httpClient, logger, Constants.TvdbProjectApiKey);
             _tagFilterService = new TagFilterService();
         }
 
@@ -101,13 +104,46 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
             }
 
             var seasonName = GetSeasonName(seasonDetail, seasonNumber, info.Name);
+            string? overview = null;
+
+            // Try to find a French title/overview if the library language is French
+            if (info.MetadataLanguage == "fr")
+            {
+                var mapping = _animeListMapper.GetMappingByAniListId(seasonDetail.AniListId);
+                if (mapping != null)
+                {
+                    if (mapping.anidb_id.HasValue)
+                    {
+                        var aniDbData = await _apiService.GetFullAniDbAnimeAsync(mapping.anidb_id.Value, _config.AniDbClientName, _config.AniDbClientVersion, _config.AniDbRateLimit);
+                        var frTitle = aniDbData?.Titles?.TitleList?.FirstOrDefault(t => string.Equals(t.Language, "fr", StringComparison.OrdinalIgnoreCase))?.Value;
+                        if (!string.IsNullOrEmpty(frTitle))
+                        {
+                            seasonName = frTitle;
+                        }
+                    }
+
+                    if (mapping.TvdbId.HasValue)
+                    {
+                        var translation = await _tvdbClient.GetSeriesTranslationAsync((int)mapping.TvdbId.Value, "fra", cancellationToken);
+                        if (seasonName == GetSeasonName(seasonDetail, seasonNumber, info.Name) && !string.IsNullOrEmpty(translation?.Name))
+                        {
+                            seasonName = translation.Name;
+                        }
+
+                        if (!string.IsNullOrEmpty(translation?.Overview))
+                        {
+                            overview = translation.Overview;
+                        }
+                    }
+                }
+            }
+
             var sortName = $"Season {seasonNumber:00}";
             var originalTitle = seasonDetail.TitleEnglish
                 ?? seasonDetail.TitleRomaji
                 ?? seasonDetail.TitleNative
                 ?? seasonName;
 
-            string? overview = null;
             int? malIdForOverview = seasonDetail.MalId;
             if (ShouldUseJikanOverview() && !malIdForOverview.HasValue)
             {

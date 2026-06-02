@@ -57,15 +57,21 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
                 return result;
             }
 
-            var engTranslation = await _tvdbClient.GetEpisodeTranslationAsync(tvdbEpisode.Id, "eng", cancellationToken);
+            var targetLang = info.MetadataLanguage?.ToLowerInvariant() switch
+            {
+                "fr" => "fra",
+                "ja" => "jpn",
+                _ => "eng"
+            };
+            var translation = await _tvdbClient.GetEpisodeTranslationAsync(tvdbEpisode.Id, targetLang, cancellationToken);
 
             var episode = new Episode
             {
-                Name = engTranslation?.Name ?? tvdbEpisode.Name ?? info.Name,
+                Name = translation?.Name ?? tvdbEpisode.Name ?? info.Name,
                 OriginalTitle = tvdbEpisode.Name,
                 IndexNumber = tvdbEpisode.Number ?? info.IndexNumber,
                 ParentIndexNumber = tvdbEpisode.SeasonNumber ?? info.ParentIndexNumber,
-                Overview = engTranslation?.Overview ?? tvdbEpisode.Overview
+                Overview = translation?.Overview ?? tvdbEpisode.Overview
             };
 
             if (DateTime.TryParse(tvdbEpisode.Aired, out var airDate))

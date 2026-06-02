@@ -859,6 +859,106 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
             return result;
         }
 
+        public async Task<AniDbAnime?> GetFullAniDbAnimeAsync(
+            long anidbId,
+            string clientName,
+            string clientVersion,
+            int rateLimitMs = 2000)
+        {
+            var now = DateTimeOffset.UtcNow;
+
+            EnsurePersistentCacheLoaded();
+
+            if (_aniDbCache.TryGetValue(anidbId, out var cached) &&
+                now - cached.CachedAt < AniDbCacheDuration)
+            {
+                _logger.LogInformation("AniDB cache hit for ID {AniDbId} (age: {Age:F1} minutes)", anidbId, (now - cached.CachedAt).TotalMinutes);
+                return new AniDbAnime
+                {
+                    Tags = new AniDbTags { TagList = cached.Tags.Select(t => new AniDbTag { Name = t }).ToList() },
+                    Titles = new AniDbTitles { TitleList = cached.Titles }
+                };
+            }
+
+            if (IsAniDbTemporarilyBanned(out var remainingBan, out var banReason))
+            {
+                _logger.LogWarning("AniDB requests paused until {BanUntil:u} (remaining {Remaining:F1} minutes) because {Reason}", now + remainingBan, remainingBan.TotalMinutes, banReason);
+                return null;
+            }
+
+            try
+            {
+                var rateContext = GetAniDbRateLimitContext(rateLimitMs);
+                var timeSinceLastRequest = DateTime.UtcNow - _lastAniDbRequest;
+                var waitMs = Math.Max(0, rateContext.EffectiveRateLimitMs - (int)timeSinceLastRequest.TotalMilliseconds);
+                if (waitMs > 0)
+                {
+                    _logger.LogInformation("AniDB rate limiting: waiting {WaitMs} ms before request #{RequestNumber} (mode: {Mode}, date: {Date})",
+                        waitMs,
+                        rateContext.RequestNumber,
+                        rateContext.IsSlowMode ? "slow" : "fast",
+                        rateContext.Date.ToString("yyyy-MM-dd"));
+                    await Task.Delay(waitMs);
+                }
+
+                var url = $"http://api.anidb.net:9001/httpapi?request=anime&client={clientName}&clientver={clientVersion}&protover=1&aid={anidbId}";
+                _logger.LogDebug("Fetching AniDB data from: {Url}", url);
+
+                var response = await _httpClient.GetAsync(url);
+                _lastAniDbRequest = DateTime.UtcNow;
+
+                if (IsAniDbRateLimited(response))
+                {
+                    var backoff = GetRetryAfterDelay(response, AniDbBanBackoff);
+                    SetAniDbBan($"AniDB rate-limit response ({(int)response.StatusCode} {response.StatusCode})", backoff);
+                    return null;
+                }
+
+                if (response.IsSuccessStatusCode)
+                {
+                    string xmlContent;
+                    try
+                    {
+                        xmlContent = await response.Content.ReadAsStringAsync();
+                    }
+                    catch
+                    {
+                        byte[] responseData = await response.Content.ReadAsByteArrayAsync();
+                        xmlContent = IsGzipped(responseData) ? DecompressGzip(responseData) : System.Text.Encoding.UTF8.GetString(responseData);
+                    }
+
+                    if (ContainsAniDbBanMessage(xmlContent))
+                    {
+                        SetAniDbBan("AniDB response contained ban/limit notice", AniDbBanBackoff);
+                        return null;
+                    }
+
+                    var animeData = ParseAniDbXml(xmlContent);
+                    if (animeData != null)
+                    {
+                        var allTags = animeData.Tags?.TagList?
+                            .Where(tag => !string.IsNullOrEmpty(tag.Name))
+                            .Select(tag => tag.Name!)
+                            .Distinct()
+                            .ToList() ?? new List<string>();
+
+                        // Apply tag filtering
+                        var tags = _tagFilterService.FilterTags(allTags);
+
+                        _aniDbCache[anidbId] = new AniDbCacheEntry(now, tags, animeData.Titles?.TitleList);
+                        PersistCachesToDiskSafe();
+                        return animeData;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching AniDB data for ID {AniDbId}", anidbId);
+            }
+
+            return null;
+        }
+
         // Replace the GetAniDbTagsAsync method with this version that handles compression:
         public async Task<List<string>> GetAniDbTagsAsync(
             long anidbId,
@@ -1669,7 +1769,7 @@ namespace Jellyfin.Plugin.AnimeMultiSource.Providers
             public Dictionary<int, AniListCacheEntry<List<PersonInfo>>> AniListPeople { get; set; } = new();
         }
 
-        private sealed record AniDbCacheEntry(DateTimeOffset CachedAt, List<string> Tags);
+        private sealed record AniDbCacheEntry(DateTimeOffset CachedAt, List<string> Tags, List<AniDbTitle>? Titles = null);
         private sealed record AniDbRateLimitContext(int EffectiveRateLimitMs, int RequestNumber, bool IsSlowMode, DateTime Date);
         private sealed record AniListCacheEntry<T>(DateTimeOffset CachedAt, T Data);
         public sealed class AniListSeasonDetail
